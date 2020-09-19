@@ -228,6 +228,7 @@ class IdentityCircuit():
         '''
         #Initialize the parameters
         thetas=self._initialize_thetas()
+        #final_output_vector=None
 
         #Now we will start the optimization process
         for iidx in range(n_itr):
@@ -241,6 +242,8 @@ class IdentityCircuit():
 
             print("Epoch:{}\t Cost:{}".format(iidx,cost))
             pprint(thetas)
+            print("Output Vector:")
+            pprint(output_state_vec)
             print("\n")
         
         print("Training Completed")
@@ -259,9 +262,9 @@ if __name__=="__main__":
     circuit=IdentityCircuit(n_qubits,init_state,n_layers,backend)
 
     #Now we will start the optimization process
-    epochs=50
+    epochs=500
     epsilon=0.01
-    lr=0.001
+    lr=0.1
     circuit.optimize(n_itr=epochs,
                         epsilon=epsilon,
                         lr=lr)
