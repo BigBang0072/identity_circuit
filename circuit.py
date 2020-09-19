@@ -18,7 +18,7 @@ class IdentityBlock():
     of even and odd block to be applied to the circuit.
     '''
 
-    def __init__(self,n_qubits,circuit,layer_num):
+    def __init__(self,n_qubits,circuit,layer_num,sym_thetas):
         '''
         Parameters:
             n_qubits        : number of qubits in the circuit
@@ -30,33 +30,37 @@ class IdentityBlock():
         #Applying the approporate blocks to the circuit
         self._apply_odd_block(n_qubits,layer_num)
         self._apply_even_block(n_qubits,layer_num)
-               
+
+        self._collect_params(sym_thetas)       
+        
     def _apply_odd_block(self,n_qubits,layer_num):
         '''
         This function will apply the odd block to the circuit as required
         '''
         #Initializing the parameters
-        self.odd_thetas=[qiskit.circuit.Parameter(
-                            "theta.odd.{}.{}").format(layer_num,idx)
+        param_name="theta.odd.{}.{}"
+        self.odd_thetas={param_name.format(layer_num,idx):
+                            qiskit.circuit.Parameter(param_name.format(layer_num,idx))
                          for idx in range(n_qubits)
-                        ]
+                        }
         
         #Now we will append the required gate to the circuit
-        _ = [self.circuit.rx(self.odd_thetas[idx],idx) 
-                for idx in range(n_qubits)]
+        _ = [self.circuit.rx(self.odd_thetas[pname],idx) 
+                for idx,pname in enumerate(self.odd_thetas.keys())]
         
     def _apply_even_block(self,n_qubits,layer_num):
         '''
         This function will apply the even circuit to the circuit as required
         '''
         #Initializing the parameters
-        self.even_thetas=[qiskit.circuit.Parameter(
-                            "theta.even.{}.{}").format(layer_num,idx)
+        param_name="theta.even.{}.{}"
+        self.even_thetas={param_name.format(layer_num,idx):
+                            qiskit.circuit.Parameter(param_name.format(layer_num,idx))
                          for idx in range(n_qubits)
-                        ]
+                        }
         #Now we will append the required gate to the circuit
-        _ = [self.circuit.rz(self.even_thetas[idx],idx) 
-                for idx in range(n_qubits)]
+        _ = [self.circuit.rz(self.even_thetas[pname],idx) 
+                for idx,pname in enumerate(self.even_thetas.keys())]
         
         #Now we will apply the two qubit gate
         self.circuit.cz(control_qubit=0,target_qubit=1)
@@ -68,6 +72,16 @@ class IdentityBlock():
 
         self.circuit.cz(control_qubit=2,target_qubit=3)
 
+    def _collect_params(self,sym_thetas):
+        '''
+        This function will collect the parameters defined in these bolck in one
+        centralized location.
+        '''
+        for pname in self.odd_thetas.keys():
+            sym_thetas[pname]=self.odd_thetas[pname]
+        
+        for pname in self.even_thetas.keys():
+            sym_thetas[pname]=self.even_thetas[pname]
 
 class IdentityCircuit():
     '''
@@ -96,8 +110,9 @@ class IdentityCircuit():
 
         #Now lets apply the even and odd blocks
         self.n_layers=n_layers
+        self.sym_thetas={}
         for layer_num in range(n_layers):
-            self.circuit = IdentityBlock(self.n_qubits,self.circuit,layer_num).circuit
+            self.circuit = IdentityBlock(self.n_qubits,self.circuit,layer_num,self.sym_thetas).circuit
         
         #Finally lets measure the circuit
         #self.circuit.measure_all()
@@ -131,7 +146,9 @@ class IdentityCircuit():
         job = qiskit.execute(self.circuit,
                             self.backend,
                             shots=self.shots,
-                            parameter_binds=[thetas])
+                            parameter_binds=[{self.sym_thetas[pname]:val
+                                                for pname,val in thetas.items()
+                                            }])
         #Getting the measurement result
         output_state_vec = job.result().get_statevector(self.circuit)
 
@@ -147,6 +164,9 @@ class IdentityCircuit():
         '''
         delta_vec=init_state_vec-output_state_vec
         cost = np.inner(delta_vec, np.conjugate(delta_vec))
+
+        assert cost.imag==0.0,"Cost cannot be imaginary"
+        cost=cost.real
         
         return cost
 
@@ -229,9 +249,11 @@ class IdentityCircuit():
 if __name__=="__main__":
     #Setting up the network parameters
     n_qubits=4
-    init_state=[0]*n_qubits
+    init_state=[0]*(2**n_qubits)
+    init_state[3]=1
+
     n_layers=1
-    backend=Aer.get_backend("statevector_simulation")
+    backend=Aer.get_backend("statevector_simulator")
 
     #Now lets create the curcuit
     circuit=IdentityCircuit(n_qubits,init_state,n_layers,backend)
