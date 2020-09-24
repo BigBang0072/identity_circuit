@@ -11,6 +11,8 @@ from  pprint import pprint
 import qiskit
 from qiskit import Aer
 from qiskit.visualization import *
+from qiskit.aqua.components.optimizers import AQGD
+from qiskit.aqua.components.optimizers import COBYLA
 
 class IdentityBlock():
     '''
@@ -113,6 +115,8 @@ class IdentityCircuit():
         self.sym_thetas={}
         for layer_num in range(n_layers):
             self.circuit = IdentityBlock(self.n_qubits,self.circuit,layer_num,self.sym_thetas).circuit
+        #Collecting the names of each thetas
+        self.thetas_name=list(self.sym_thetas.keys())
         
         #Finally lets measure the circuit
         #self.circuit.measure_all()
@@ -146,15 +150,32 @@ class IdentityCircuit():
         job = qiskit.execute(self.circuit,
                             self.backend,
                             shots=self.shots,
-                            parameter_binds=[{self.sym_thetas[pname]:val
-                                                for pname,val in thetas.items()
-                                            }])
+                            parameter_binds=[self._bind_parameters(thetas)])
         #Getting the measurement result
         output_state_vec = job.result().get_statevector(self.circuit)
 
         return output_state_vec
     
-    def calculate_cost(self,init_state_vec,output_state_vec):
+    def _bind_parameters(self,thetas):
+        '''
+        This function will create a paremeter binding for execution based
+        on the type of theta given to it.
+
+        If the theta is from our grad descent its in different format
+        than the one sent by optimizer from qiskit
+        '''
+        if type(thetas)==type(dict()):
+            return {
+                    self.sym_thetas[pname]:val
+                        for pname,val in thetas.items()
+            }
+        else:
+            return {
+                    self.sym_thetas[pname]:val
+                        for pname,val in zip(self.thetas_name,list(thetas))
+            }
+    
+    def calculate_cost(self,thetas):
         '''
         This function will calcualte the cost by 
 
@@ -162,13 +183,16 @@ class IdentityCircuit():
 
             |delta> = pshi(theta) - phi (Does this make sense)?
         '''
-        delta_vec=init_state_vec-output_state_vec
+        #Simulating the circuit to get the ourput vector
+        output_state_vec=self.simulate(thetas)
+
+        delta_vec=self.init_state_vec-output_state_vec
         cost = np.inner(delta_vec, np.conjugate(delta_vec))
 
         assert cost.imag==0.0,"Cost cannot be imaginary"
         cost=cost.real
         
-        return cost
+        return cost,output_state_vec
 
     def _calculate_gradient(self,thetas,epsilon):
         '''
@@ -184,13 +208,11 @@ class IdentityCircuit():
         for pname in thetas.keys():
             #Forward Pertubation on current theta
             thetas_copy[pname]=thetas[pname]+epsilon
-            output_state_vec=self.simulate(thetas_copy)
-            cost_plus=self.calculate_cost(output_state_vec,self.init_state_vec)
+            cost_plus,_=self.calculate_cost(thetas_copy)
 
             #Backward pertubation of current theta
             thetas_copy[pname]=thetas[pname]-epsilon
-            output_state_vec=self.simulate(thetas_copy)
-            cost_minus=self.calculate_cost(output_state_vec,self.init_state_vec)
+            cost_minus,_=self.calculate_cost(thetas_copy)
 
             #Resetting the theta state
             thetas_copy[pname]=thetas[pname]
@@ -201,7 +223,7 @@ class IdentityCircuit():
         
         return grads
     
-    def _initialize_thetas(self,):
+    def _initialize_thetas(self,ret_type="dict"):
         '''
         This function will randomly initialize the parameters used in this
         network.
@@ -212,7 +234,10 @@ class IdentityCircuit():
                 thetas["theta.odd.{}.{}".format(layer_num,qidx)]=np.random.uniform(0,2*np.pi)
                 thetas["theta.even.{}.{}".format(layer_num,qidx)]=np.random.uniform(0,2*np.pi)
 
-        return thetas
+        if ret_type=="dict":
+            return thetas
+        #If we want the initial parametes as a list
+        return list(thetas.values())
 
     def _gradient_descent_step(self,thetas,grads,lr):
         '''
@@ -233,8 +258,7 @@ class IdentityCircuit():
         #Now we will start the optimization process
         for iidx in range(n_itr):
             #Finding the current cost of circuit
-            output_state_vec=self.simulate(thetas)
-            cost=self.calculate_cost(output_state_vec,self.init_state_vec)
+            cost,output_state_vec=self.calculate_cost(thetas)
 
             #Now computing the gradient and applying
             grads=self._calculate_gradient(thetas,epsilon)
@@ -247,27 +271,62 @@ class IdentityCircuit():
             print("\n")
         
         print("Training Completed")
+    
+    def optimize_with_inbuilt_function(self,n_itr,tol):
+        '''
+        The gradient descent optimizer implemented above dosent put constraints
+        on the variable. Hence we will use the inbuilt optimizer.
+        '''
+        print("Starting the Training!!")
+        #Initialize the parameters
+        thetas=self._initialize_thetas(ret_type="list")
+
+        cobyla_optimizer = COBYLA(maxiter = n_itr,
+                                 tol = tol, disp = True)
+    
+        opt_results=cobyla_optimizer.optimize(num_vars = len(thetas), 
+                                         variable_bounds=[(0, 2*np.pi)]*len(thetas),
+                                         objective_function = self.calculate_cost,
+                                         initial_point = thetas)
+        print("Training Completed!!")
+        #Getting the final parameters
+        final_thetas=opt_results[0]
+        cost,output_state_vec=self.calculate_cost(final_thetas)
+        final_thetas=self._bind_parameters(final_thetas)
+        
+        print("Final Loss:",cost)
+        pprint(final_thetas)
+        print("Output Vector:")
+        pprint(output_state_vec)
+        print("\n")
 
 
 if __name__=="__main__":
     #Setting up the network parameters
     n_qubits=4
     #Creating a random initial state (Assuming pure state for now)
-    init_state=[1,1,1,1]        # [q0,q1,q3,q3] -->Big Endien form right now
+    init_state=[1,1,0,0]        # [q0,q1,q3,q3] -->Big Endien form right now
 
-    n_layers=2
+    n_layers=1
     backend=Aer.get_backend("statevector_simulator")
 
     #Now lets create the curcuit
     circuit=IdentityCircuit(n_qubits,init_state,n_layers,backend)
 
     #Now we will start the optimization process
-    epochs=500
-    epsilon=0.01
-    lr=0.1
-    circuit.optimize(n_itr=epochs,
-                        epsilon=epsilon,
-                        lr=lr)
+    optimizer_type="grad_descent"    #[grad_descent,inbuilt]
+    if optimizer_type=="grad_descent":
+        epochs=500
+        epsilon=0.01
+        lr=0.1
+        circuit.optimize(n_itr=epochs,
+                            epsilon=epsilon,
+                            lr=lr)
+    else:
+        #Optimizing the parameters using inbuilt optimizer
+        epochs=500
+        tol=1e-10
+        circuit.optimize_with_inbuilt_function(n_itr=epochs,tol=tol)
 
 
 
