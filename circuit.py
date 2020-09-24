@@ -106,7 +106,7 @@ class IdentityCircuit():
         #Initialzing the circuit with the given random state
         self.init_state=init_state
         self.init_state_vec=self._encode_input_state()
-        self.circuit.initialize(init_state,list(range(self.n_qubits)))
+        self.circuit.initialize(self.init_state_vec,list(range(self.n_qubits)))
 
         #Now lets apply the even and odd blocks
         self.n_layers=n_layers
@@ -132,7 +132,7 @@ class IdentityCircuit():
         entry_idx = sum([val*(2**idx) for idx,val in enumerate(self.init_state)])
 
         #Creating the init_state
-        init_state_vec=np.zeros(len(self.init_state))
+        init_state_vec=np.zeros(2**self.n_qubits)
         init_state_vec[entry_idx]=1
 
         return init_state_vec
@@ -252,10 +252,10 @@ class IdentityCircuit():
 if __name__=="__main__":
     #Setting up the network parameters
     n_qubits=4
-    init_state=[0]*(2**n_qubits)
-    init_state[3]=1
+    #Creating a random initial state (Assuming pure state for now)
+    init_state=[1,1,1,1]        # [q0,q1,q3,q3] -->Big Endien form right now
 
-    n_layers=1
+    n_layers=2
     backend=Aer.get_backend("statevector_simulator")
 
     #Now lets create the curcuit
