@@ -1,18 +1,12 @@
 import numpy as np
 import matplotlib.pyplot as plt 
 from  pprint import pprint
+import scipy
 
-# import torch
-# from torch.autograd import Function
-# import torch.optim as optim
-# import torch.nn as nn
-# import torch.nn.functional as F 
 
 import qiskit
 from qiskit import Aer
 from qiskit.visualization import *
-from qiskit.aqua.components.optimizers import AQGD
-from qiskit.aqua.components.optimizers import COBYLA
 
 class IdentityBlock():
     '''
@@ -191,8 +185,10 @@ class IdentityCircuit():
 
         assert cost.imag==0.0,"Cost cannot be imaginary"
         cost=cost.real
+
+        # print("Cost:",cost)
         
-        return cost,output_state_vec
+        return cost
 
     def _calculate_gradient(self,thetas,epsilon):
         '''
@@ -208,11 +204,11 @@ class IdentityCircuit():
         for pname in thetas.keys():
             #Forward Pertubation on current theta
             thetas_copy[pname]=thetas[pname]+epsilon
-            cost_plus,_=self.calculate_cost(thetas_copy)
+            cost_plus=self.calculate_cost(thetas_copy)
 
             #Backward pertubation of current theta
             thetas_copy[pname]=thetas[pname]-epsilon
-            cost_minus,_=self.calculate_cost(thetas_copy)
+            cost_minus=self.calculate_cost(thetas_copy)
 
             #Resetting the theta state
             thetas_copy[pname]=thetas[pname]
@@ -258,7 +254,8 @@ class IdentityCircuit():
         #Now we will start the optimization process
         for iidx in range(n_itr):
             #Finding the current cost of circuit
-            cost,output_state_vec=self.calculate_cost(thetas)
+            cost=self.calculate_cost(thetas)
+            output_state_vec=self.simulate(thetas)
 
             #Now computing the gradient and applying
             grads=self._calculate_gradient(thetas,epsilon)
@@ -281,17 +278,18 @@ class IdentityCircuit():
         #Initialize the parameters
         thetas=self._initialize_thetas(ret_type="list")
 
-        cobyla_optimizer = COBYLA(maxiter = n_itr,
-                                 tol = tol, disp = True)
-    
-        opt_results=cobyla_optimizer.optimize(num_vars = len(thetas), 
-                                         variable_bounds=[(0, 2*np.pi)]*len(thetas),
-                                         objective_function = self.calculate_cost,
-                                         initial_point = thetas)
+        #Using inbuilt scipy function to minimize
+        opt_results = scipy.optimize.minimize(self.calculate_cost,
+                                            thetas,
+                                            method="SLSQP",
+                                            bounds=[(0, 2*np.pi)]*len(thetas))
+
+
         print("Training Completed!!")
         #Getting the final parameters
-        final_thetas=opt_results[0]
-        cost,output_state_vec=self.calculate_cost(final_thetas)
+        final_thetas=list(opt_results.x)
+        cost=self.calculate_cost(final_thetas)
+        output_state_vec=self.simulate(final_thetas)
         final_thetas=self._bind_parameters(final_thetas)
         
         print("Final Loss:",cost)
@@ -314,7 +312,7 @@ if __name__=="__main__":
     circuit=IdentityCircuit(n_qubits,init_state,n_layers,backend)
 
     #Now we will start the optimization process
-    optimizer_type="grad_descent"    #[grad_descent,inbuilt]
+    optimizer_type="inbuilt"    #[grad_descent,inbuilt]
     if optimizer_type=="grad_descent":
         epochs=500
         epsilon=0.01
