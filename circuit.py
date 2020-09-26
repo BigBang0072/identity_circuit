@@ -5,7 +5,7 @@ import pdb
 
 import matplotlib
 import matplotlib.pyplot as plt
-plt.figure(figsize=(15,8))
+# plt.figure(figsize=(15,8))
 
 import qiskit
 from qiskit import Aer
@@ -28,7 +28,9 @@ class IdentityBlock():
 
         #Applying the approporate blocks to the circuit
         self._apply_odd_block(n_qubits,layer_num)
+        #self.circuit.barrier()
         self._apply_even_block(n_qubits,layer_num)
+        #self.circuit.barrier()
 
         self._collect_params(sym_thetas)       
         
@@ -364,6 +366,7 @@ if __name__=="__main__":
 
     #Now lets create the curcuit
     circuit=IdentityCircuit(n_qubits,init_state,n_layers,backend)
+    print(circuit.circuit.draw())
 
     #Now we will start the optimization process
     optimizer_type="inbuilt"    #[grad_descent,inbuilt]
@@ -381,7 +384,8 @@ if __name__=="__main__":
         circuit.optimize_with_inbuilt_function(n_itr=epochs,tol=tol)
     
     #Saving the loss trend in a text file
-    save_fname="logs/{}/loss.txt".format(n_layers)
+    fname="2.rx+rz"
+    save_fname="logs/diff_gate/{}.txt".format(fname)
     np.savetxt(save_fname,circuit.all_cost,delimiter="\t")
     
     
