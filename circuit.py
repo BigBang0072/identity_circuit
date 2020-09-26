@@ -1,8 +1,11 @@
 import numpy as np
-import matplotlib.pyplot as plt 
 from  pprint import pprint
 import scipy
+import pdb
 
+import matplotlib
+import matplotlib.pyplot as plt
+plt.figure(figsize=(15,8))
 
 import qiskit
 from qiskit import Aer
@@ -118,6 +121,10 @@ class IdentityCircuit():
         #Initialiing the backend to be used
         self.backend    =   backend
         self.shots      =   shots
+
+        #Initializing the variables which will hold our metrics for viz
+        self.all_cost=[]        #The loss value at each epoch
+        self.step=0             #The epoch number
     
     def _encode_input_state(self,):
         '''
@@ -186,9 +193,54 @@ class IdentityCircuit():
         assert cost.imag==0.0,"Cost cannot be imaginary"
         cost=cost.real
 
-        # print("Cost:",cost)
+        #Saving the metric for visualization
+        self.all_cost.append(cost)
+        if self.step%5==0:
+            self._save_network_metrics(output_state_vec,thetas)
+        self.step+=1
         
         return cost
+    
+    def _save_network_metrics(self,output_state_vec,thetas):
+        '''
+        This function will save the network metrics like the trend of
+        parameters, and the final statevector.
+        '''
+        #Get the theta binding
+        thetas=self._bind_parameters(thetas)
+        theta_names=[ele.name for ele in thetas.keys()]
+        #First of all lets plot the thetas
+        ax1=plt.subplot(211)
+        ax1.bar(range(1,len(thetas)+1),list(thetas.values()),color="b",
+                label="value")
+        ax1.set_title("Parameter/Theta Values at Epoch:{}".format(self.step))
+        ax1.set_xticks(range(1,len(theta_names)+1))
+        ax1.set_ylim([0,(2.2)*np.pi])
+        # ax1.set_xticklabels(theta_names,rotation=45)
+        # ax1.legend()
+        
+
+        #Now get the ral and imaginary part of the complex number
+        imag_part=np.imag(output_state_vec)
+        real_part=np.real(output_state_vec)
+        state_names=["{0:04b}".format(num) for num in range(2**n_qubits)]
+        #Now lets plot them
+        ax2=plt.subplot(212)
+        width=0.35
+        index=np.arange((len(imag_part)))
+        ax2.bar(index-width/2,real_part,width,
+                color="g",label="real")
+        ax2.bar(index+width/2,imag_part,width,
+                color="r",label="imag")
+        ax2.set_title("Coefficient of State Vector at Epoch:{}".format(self.step))
+        ax2.set_xticks(range(0,len(state_names)))
+        ax2.set_xticklabels(state_names,rotation=45)
+        ax2.set_ylim([-1.5,1.5])
+        ax2.legend(["real","imag"])
+
+        plt.savefig("{}/step:{}.png".format(self.n_layers,self.step))
+        # pdb.set_trace()
+        plt.clf()
 
     def _calculate_gradient(self,thetas,epsilon):
         '''
@@ -323,8 +375,14 @@ if __name__=="__main__":
     else:
         #Optimizing the parameters using inbuilt optimizer
         epochs=500
-        tol=1e-10
+        tol=1e-9
         circuit.optimize_with_inbuilt_function(n_itr=epochs,tol=tol)
+    
+    #Saving the loss trend in a text file
+    save_fname="{}/loss.txt".format(n_layers)
+    np.savetxt(save_fname,circuit.all_cost,delimiter="\t")
+    
+    
 
 
 
