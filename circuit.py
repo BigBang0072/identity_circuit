@@ -89,13 +89,14 @@ class IdentityCircuit():
     updated using gradient descent or grid search. 
     '''
 
-    def __init__(self,n_qubits,init_state,n_layers,backend,shots=None):
+    def __init__(self,n_qubits,init_state,n_layers,backend,shots=None,savefig=False):
         '''
         Parameters:
             init_state  : state to initialize the quantum circuit
             n_layers    : number of layers of identity block to be used
             backend     : to be used for running the simulation
-            shots       : number of repetition/ measurement to get final state
+            savefig     : to save the metrics collected during training
+            shots       : if sometime we want to collect the measurement
         '''
         #First of all lets define the circuit
         assert n_qubits==4,"Qubit should be 4 as per the problem"
@@ -125,6 +126,7 @@ class IdentityCircuit():
         #Initializing the variables which will hold our metrics for viz
         self.all_cost=[]        #The loss value at each epoch
         self.step=0             #The epoch number
+        self.savefig=savefig
     
     def _encode_input_state(self,):
         '''
@@ -195,7 +197,7 @@ class IdentityCircuit():
 
         #Saving the metric for visualization
         self.all_cost.append(cost)
-        if self.step%5==0:
+        if self.step%5==0 and self.savefig:
             self._save_network_metrics(output_state_vec,thetas)
         self.step+=1
         
@@ -238,7 +240,7 @@ class IdentityCircuit():
         ax2.set_ylim([-1.5,1.5])
         ax2.legend(["real","imag"])
 
-        plt.savefig("{}/step:{}.png".format(self.n_layers,self.step))
+        plt.savefig("logs/{}/step:{}.png".format(self.n_layers,self.step))
         # pdb.set_trace()
         plt.clf()
 
@@ -357,7 +359,7 @@ if __name__=="__main__":
     #Creating a random initial state (Assuming pure state for now)
     init_state=[1,1,0,0]        # [q0,q1,q3,q3] -->Big Endien form right now
 
-    n_layers=1
+    n_layers=2
     backend=Aer.get_backend("statevector_simulator")
 
     #Now lets create the curcuit
@@ -379,7 +381,7 @@ if __name__=="__main__":
         circuit.optimize_with_inbuilt_function(n_itr=epochs,tol=tol)
     
     #Saving the loss trend in a text file
-    save_fname="{}/loss.txt".format(n_layers)
+    save_fname="logs/{}/loss.txt".format(n_layers)
     np.savetxt(save_fname,circuit.all_cost,delimiter="\t")
     
     
